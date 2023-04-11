@@ -424,7 +424,7 @@ int ML_Smoother_Apply(ML_Smoother *pre, int inlen, double sol[],
   int         i, n;
   double      temp, *res, tol;
   ML_Operator *Amat;
-
+DEBUG;
 #if defined(ML_TIMING) || defined(ML_TIMING_DETAILED)
   double      t0;
   t0 = GetClock();
@@ -434,6 +434,7 @@ int ML_Smoother_Apply(ML_Smoother *pre, int inlen, double sol[],
   pre->init_guess = init_guess;
 
   if (pre->ntimes == ML_CONVERGE) {
+   assert(false);
     Amat = pre->my_level->Amat;
     n    = Amat->outvec_leng;
     res  = (double *) ML_allocate( (n+1)*sizeof(double) );
@@ -450,7 +451,12 @@ int ML_Smoother_Apply(ML_Smoother *pre, int inlen, double sol[],
     pre->ntimes = ML_CONVERGE;
     ML_free(res);
   }
-  else pre->smoother->func_ptr(pre,inlen,sol,outlen,rhs);
+  else {
+   DEBUG;
+   //DONE
+   pre->smoother->func_ptr(pre,inlen,sol,outlen,rhs);
+   DEBUG;
+  }
 
 #if defined(ML_TIMING) || defined(ML_TIMING_DETAILED)
   pre->apply_time += (GetClock() - t0);
@@ -6874,6 +6880,7 @@ int ML_Smoother_Cheby_Apply(ML_Smoother *sm,int inlen,double x[],int outlen,
    struct DinvA_widget DinvA_widget;
    int j;
 #endif
+
    n = outlen;
    widget = (struct MLSthing *) smooth_ptr->smoother->data;
    if (outlen == -47) ML_avoid_unused_param((void *) &inlen);
@@ -7576,7 +7583,7 @@ int ML_Smoother_HiptmairSubsmoother_Create(ML **ml_subproblem,
    return 0;
 }
 
-int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
+int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) // DONE
 {
 
    ML_Smoother     *smooth_ptr = (ML_Smoother *) sm;
@@ -7592,6 +7599,8 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
 #endif
    double lambda_min, lambda_max;
 
+   DEBUG;
+
    n = outlen;
    widget = (struct MLSthing *) smooth_ptr->smoother->data;
    deg    = widget->mlsDeg;
@@ -7605,8 +7614,8 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
      lambda_max = Amat->lambda_max;
    }
 
-   pAux  = (double *) ML_allocate((n+1)*sizeof(double));
-   dk     = (double *) ML_allocate((n+1)*sizeof(double));
+   pAux  = (double *) ML_allocate((n+1)*sizeof(double)); // goto:fix?
+   dk     = (double *) ML_allocate((n+1)*sizeof(double)); // goto:fix?
 
    if (pAux == NULL) pr_error("ML_Smoother_Cheby_Apply: allocation failed\n");
    if (dk    == NULL) {
@@ -7636,6 +7645,7 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
          pr_error("Error(MLS_Apply): Need diagonal\n");
       else
       {
+         DEBUG; // should called once
          allocated_space = 30;
          cols = (int    *) ML_allocate(allocated_space*sizeof(int   ));
          vals = (double *) ML_allocate(allocated_space*sizeof(double));
@@ -7672,6 +7682,7 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
    /* This is meant for the case when the matrix is the identity.*/
 
    if ((lambda_min == 1.0) && (lambda_min == lambda_max)) {
+      assert(false);
      for (i = 0; i < n; i++) x[i] = rhs[i]/diagonal[i];
      if (pAux != NULL) ML_free(pAux);
      if (dk   != NULL) ML_free(dk);
@@ -7679,26 +7690,31 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
    }
 
    if (widget->block_scaling == NULL) { /* normal point scaling */
-
      if (smooth_ptr->init_guess == ML_NONZERO) {
-       ML_Operator_Apply(Amat, n, x, n, pAux);
+      DEBUG;
+       ML_Operator_Apply(Amat, n, x, n, pAux); // goto:fix
+
+       #pragma omp parallel for default(none), private(i), shared(n, dk, rhs, pAux, theta, diagonal, x)
        for (i = 0; i < n; i++) {
 	 dk[i] = (rhs[i] - pAux[i])/(theta*diagonal[i]);
 	 x[i] += dk[i];
        }
      }
      else {
+      #pragma omp parallel for default(none), private(i), shared(n, x, dk, rhs, theta, diagonal)
        for (i = 0; i < n; i++) {
 	 x[i] = dk[i] = rhs[i]/(theta*diagonal[i]);
        }
      }
-
      for (k = 0; k < deg-1; k++) {
-       ML_Operator_Apply(Amat, n, x, n, pAux);
+      DEBUG;
+       ML_Operator_Apply(Amat, n, x, n, pAux); // goto:fix
        rhokp1 = 1./(2.*s1 - rhok);
        dtemp1 = rhokp1*rhok;
        dtemp2 = 2.*rhokp1/delta;
        rhok = rhokp1;
+
+       #pragma omp parallel for default(none), private(i), shared(n, dk, dtemp1, dtemp2, rhs, pAux, diagonal, x)
        for (i = 0; i < n; i++) {
 	 dk[i] = dtemp1 * dk[i] + dtemp2*(rhs[i]-pAux[i])/diagonal[i];
 	 x[i] += dk[i];
@@ -7707,7 +7723,7 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
 
    }
    else { /* block scaling */
-
+      assert(false);
      if (smooth_ptr->init_guess == ML_NONZERO) {
        ML_Operator_Apply(Amat, n, x, n, pAux);
        for (i = 0; i < n; i++) 	 dk[i] = (rhs[i] - pAux[i])/theta;

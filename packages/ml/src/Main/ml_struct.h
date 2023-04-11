@@ -13,6 +13,9 @@
 #ifndef __MLSTRUCT__
 #define __MLSTRUCT__
 
+//#define DEBUG printf("passed %s:%d\n", __FILE__, __LINE__)
+#define DEBUG
+
 /* ******************************************************************** */
 /* data structure type definition                                       */
 /* ******************************************************************** */

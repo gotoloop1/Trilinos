@@ -3311,11 +3311,13 @@ int ML_ggb_Set_CoarseSolver(int flag)
 /*****************************************************************************/
 /* solve using V-cycle multigrid                                             */
 /*-------------------------------------------------------------------------- */
-int ML_Solve_MGV( ML *ml , double *din, double *dout)
+int ML_Solve_MGV( ML *ml , double *din, double *dout) // DONE
 {
   int    i, leng, dir_leng, *dir_list, k, level;
   double *diag, *scales, *din_temp/*, *dout_tmp*/;
   ML     *ml_ggb;
+
+   DEBUG;
 
    /* ------------------------------------------------------------ */
    /* initially set the solution to be all 0           	           */
@@ -3323,7 +3325,10 @@ int ML_Solve_MGV( ML *ml , double *din, double *dout)
 
    level = ml->ML_finest_level;
    leng = ml->Amat[level].outvec_leng;
+
+   #pragma omp parallel for default(none), private(i), shared(leng, dout)
    for ( i = 0; i < leng; i++ ) dout[i] = 0.0;
+
    din_temp = (double*) ML_allocate( leng * sizeof(double) );
 
    /* ------------------------------------------------------------ */
@@ -3333,6 +3338,7 @@ int ML_Solve_MGV( ML *ml , double *din, double *dout)
    ML_BdryPts_Get_Dirichlet_Eqn_Info(&(ml->BCs[level]),&dir_leng,&dir_list);
    if ( dir_leng != 0 )
    {
+      assert(false);
       if (ml->Amat[level].diagonal != NULL) {
          ML_DVector_GetDataPtr(ml->Amat[level].diagonal,&diag);
          for ( i = 0; i < dir_leng; i++ ) {
@@ -3358,9 +3364,12 @@ int ML_Solve_MGV( ML *ml , double *din, double *dout)
    scales = NULL;
 
    if ( scales != NULL ) {
+      assert(false);
       for ( i = 0; i < leng; i++ ) din_temp[i] = din[i] / scales[i];
    } else {
       scales = NULL;
+
+      #pragma omp parallel for default(none), private(i), shared(leng, din_temp, din)
       for ( i = 0; i < leng; i++ ) din_temp[i] = din[i];
    }
 
@@ -3368,13 +3377,14 @@ int ML_Solve_MGV( ML *ml , double *din, double *dout)
    /* call MG v-cycle                                              */
    /* ------------------------------------------------------------ */
 
-   if (ml->void_options == NULL)
+   if (ml->void_options == NULL) {
+      DEBUG;
      ML_Cycle_MG(&(ml->SingleLevel[ml->ML_finest_level]), dout, din_temp,
-		 ML_ZERO, ml->comm, ML_NO_RES_NORM, ml);
-
+		 ML_ZERO, ml->comm, ML_NO_RES_NORM, ml); // goto:fix
+   }
    else
      {
-
+      assert(false);
        ml_ggb = (ML *) ml->void_options;
 
 
@@ -3894,6 +3904,8 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
    double    norm1, norm2;
 #endif
 
+   DEBUG;
+
 #ifdef ML_ANALYSIS
    short   dummy;
    int     *cols, Nrows, j, allocated_space, ncols, lwork, info;
@@ -3917,11 +3929,14 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
    /* first do the normalization                                   */
    /* ------------------------------------------------------------ */
 
-   rhss = (double *) ML_allocate( lengf * sizeof(double) );
+   rhss = (double *) ML_allocate( lengf * sizeof(double) ); // goto:fix?
    ML_DVector_GetDataPtr(curr->Amat_Normalization, &normalscales) ;
+
+   #pragma omp parallel for default(none), private(i), shared(lengf, rhss, rhs)
    for ( i = 0; i < lengf; i++ ) rhss[i] = rhs[i];
 
 #ifdef ML_ANALYSIS
+   assert(false);
    if ( comm->ML_nprocs == 1 && curr->Pmat->to == NULL && lengf < 1000 )
    {
       fp = fopen("mlmatlab.m", "w");
@@ -3960,7 +3975,7 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
       scanf("%s", instring);
    }
 #endif
-
+//DONE
    /* ------------------------------------------------------------ */
    /* smoothing or coarse solve                                    */
    /* ------------------------------------------------------------ */
@@ -3968,14 +3983,23 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
 #if defined(ML_SYNCH)
    ML_Comm_Barrier(comm);
 #endif
+DEBUG;
       if ( ML_CSolve_Check( csolve ) == 1 ) {
+         assert(false);
          ML_CSolve_Apply(csolve, lengf, sol, lengf, rhss);
       } else {
+         DEBUG;
          ML_Smoother_Apply(pre, lengf, sol, lengf, rhss, approx_all_zeros);
-	 if (pre->smoother->func_ptr == NULL) ML_Smoother_Apply(post, lengf, sol, lengf, rhss, approx_all_zeros);
-	 else ML_Smoother_Apply(post, lengf, sol, lengf, rhss, ML_NONZERO);
+         if (pre->smoother->func_ptr == NULL) {
+            assert(false);
+            ML_Smoother_Apply(post, lengf, sol, lengf, rhss, approx_all_zeros);
+         } else {
+            DEBUG;
+            ML_Smoother_Apply(post, lengf, sol, lengf, rhss, ML_NONZERO);
+         }
       }
       if (res_norm_or_not == ML_COMPUTE_RES_NORM) {
+         assert(false);
          res = (double *) ML_allocate(lengf*sizeof(double));
          ML_Operator_Apply(Amat, lengf, sol, lengf, res);
          for ( i = 0; i < lengf; i++ ) res[i] = rhss[i] - res[i];
@@ -3984,7 +4008,8 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
       }
    }
    else {
-      res = (double *) ML_allocate(lengf*sizeof(double));
+      DEBUG;
+      res = (double *) ML_allocate(lengf*sizeof(double)); // goto:fix?
 
       /* --------------------------------------------------------- */
       /* pre-smoothing and compute residual                        */
@@ -3997,10 +4022,15 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
       if ( ( approx_all_zeros != ML_ZERO ) ||
            ( pre->smoother->func_ptr != NULL) )
       {
-   	ML_Operator_Apply(Amat, lengf, sol, lengf, res);
+   	ML_Operator_Apply(Amat, lengf, sol, lengf, res); // goto:fix
+
+         #pragma omp parallel for default(none), private(i), shared(lengf, res, rhss)
          for ( i = 0; i < lengf; i++ ) res[i] = rhss[i] - res[i];
       }
-      else for ( i = 0; i < lengf; i++ ) res[i] = rhss[i];
+      else {
+         assert(false);
+         for ( i = 0; i < lengf; i++ ) res[i] = rhss[i];
+      }
 
 #ifdef ML_ANALYSIS
       if ( comm->ML_nprocs == 1 && curr->Pmat->to == NULL && lengf < 1000 )
@@ -4114,16 +4144,20 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
 
       lengc = Rmat->outvec_leng;
 
-      rhs2 = (double *) ML_allocate(lengc*sizeof(double));
-      sol2 = (double *) ML_allocate(lengc*sizeof(double));
+      rhs2 = (double *) ML_allocate(lengc*sizeof(double)); // goto:fix?
+      sol2 = (double *) ML_allocate(lengc*sizeof(double)); // goto:fix?
+
+      #pragma omp parallel for default(none), private(i), shared(lengc, sol2)
       for ( i = 0; i < lengc; i++ ) sol2[i] = 0.0;
 
       /* --------------------------------------------------------- */
       /* normalization                                             */
       /* --------------------------------------------------------- */
       ML_DVector_GetDataPtr(curr->Amat_Normalization, &normalscales) ;
-      if ( normalscales != NULL )
+      if ( normalscales != NULL ) {
+         assert(false);
          for ( i = 0; i < lengf; i++ ) res[i] /= normalscales[i];
+      }
 
       /* ------------------------------------------------------------ */
       /* transform the data from equation to grid space, do grid      */
@@ -4131,6 +4165,7 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
       /* ------------------------------------------------------------ */
       if ( ML_Mapper_Check(curr->eqn2grid) == 1 )
       {
+         assert(false);
          dtmp = (double *) ML_allocate( lengf * sizeof( double ) );
          ML_Mapper_Apply(curr->eqn2grid, res, dtmp );
          for ( i = 0; i < lengf; i++ ) res[i] = dtmp[i];
@@ -4139,19 +4174,24 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
       ML_Operator_ApplyAndResetBdryPts(Rmat, lengf, res, lengc, rhs2);
       if ( ML_Mapper_Check(Rmat->to->grid2eqn) == 1 )
       {
+         assert(false);
          dtmp = (double *) ML_allocate( lengc * sizeof( double ) );
          ML_Mapper_Apply(Rmat->to->grid2eqn, rhs2, dtmp );
          for ( i = 0; i < lengc; i++ ) rhs2[i] = dtmp[i];
          ML_free( dtmp );
       }
+      DEBUG;
       ML_DVector_GetDataPtr(Rmat->to->Amat_Normalization,&normalscales);
-      if ( normalscales != NULL )
+      if ( normalscales != NULL ) {
+         assert(false);
          for ( i = 0; i < lengc; i++ ) rhs2[i] = rhs2[i] * normalscales[i];
+      }
 
       /* --------------------------------------------------------- */
       /* process the next level and transfer back to this level    */
       /* --------------------------------------------------------- */
 #ifdef ML_SINGLE_LEVEL_PROFILING
+      assert(false);
       i = curr->levelnum-1;
       switch(i) {
          case 9:
@@ -4215,20 +4255,24 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
 #if defined(ML_SYNCH)
       ML_Comm_Barrier(comm);
 #endif
-      ML_Cycle_MG( Rmat->to, sol2, rhs2, ML_ZERO,comm, ML_NO_RES_NORM, ml);
+DEBUG;
+      ML_Cycle_MG( Rmat->to, sol2, rhs2, ML_ZERO,comm, ML_NO_RES_NORM, ml); //recursive
 #if defined(ML_SYNCH)
       ML_Comm_Barrier(comm);
 #endif
-      if ( (ml->ML_scheme == ML_MGW) && (Rmat->to->Rmat->to != NULL))
+      if ( (ml->ML_scheme == ML_MGW) && (Rmat->to->Rmat->to != NULL)) {
+         assert(false);
         ML_Cycle_MG( Rmat->to, sol2, rhs2, ML_NONZERO,comm, ML_NO_RES_NORM,ml);
+      }
 #endif /* ifdef ML_SINGLE_LEVEL_PROFILING */
-
+DEBUG;
       /* ------------------------------------------------------------ */
       /* transform the data from equation to grid space, do grid      */
       /* transfer and then transfer back to equation space            */
       /* ------------------------------------------------------------ */
       if ( ML_Mapper_Check(Rmat->to->eqn2grid) == 1 )
       {
+         assert(false);
          dtmp = (double *) ML_allocate( lengc * sizeof( double ) );
          ML_Mapper_Apply(Rmat->to->eqn2grid, sol2, dtmp);
          for ( i = 0; i < lengc; i++ ) sol2[i] = dtmp[i];
@@ -4237,21 +4281,24 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
       ML_Operator_ApplyAndResetBdryPts(Rmat->to->Pmat,lengc,sol2,lengf,res);
       if ( ML_Mapper_Check(curr->grid2eqn) == 1 )
       {
+         assert(false);
          dtmp = (double *) ML_allocate( lengf * sizeof( double ) );
          ML_Mapper_Apply(curr->grid2eqn, res, dtmp);
          for ( i = 0; i < lengf; i++ ) res[i] = dtmp[i];
          ML_free( dtmp );
       }
 
+//DONE
       /* --------------------------------------------------------- */
       /* post-smoothing                                            */
       /* --------------------------------------------------------- */
 #if defined(ML_SYNCH)
    ML_Comm_Barrier(comm);
 #endif
+      #pragma omp parallel for default(none), private(i), shared(lengf, sol, res)
       for ( i = 0; i < lengf; i++ ) sol[i] += res[i];
 #if defined(RAP_CHECK) || defined(ANALYSIS)
-
+   assert(false)
    /* When using RAP, the restricted residual after the coarse grid */
    /* correction should be zero.                                    */
 
@@ -4317,9 +4364,10 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
 #endif
       ML_free(sol2);
       ML_free(rhs2);
-
+DEBUG;
       ML_Smoother_Apply(post, lengf, sol, lengf, rhss, ML_NONZERO);
 #ifdef ML_ANALYSIS
+      assert(false);
       if ( comm->ML_nprocs == 1 && curr->Pmat->to == NULL && lengf < 1000 )
       {
          ML_Operator_Apply(Amat, lengf, sol, lengf, res);

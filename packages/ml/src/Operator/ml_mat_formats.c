@@ -807,6 +807,8 @@ int MSR_matvec(ML_Operator *Amat_in, int ilen, double p[], int olen, double ap[]
    double t0;
 #endif
 
+   DEBUG;
+
    Amat  = (ML_Operator *) Amat_in;
    comm  = Amat->comm;
    Nrows = Amat->matvec->Nrows;
@@ -891,6 +893,8 @@ int CSR_matvec(ML_Operator *Amat_in, int ilen, double p[], int olen, double ap[]
 #if defined(ML_TIMING) || defined(ML_TIMING_DETAILED)
    double t0;
 #endif
+
+   DEBUG;
 
    Amat    = (ML_Operator *) Amat_in;
    comm    = Amat->comm;

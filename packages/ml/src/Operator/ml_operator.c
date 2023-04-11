@@ -622,10 +622,12 @@ int ML_Operator_Apply(ML_Operator *Op, int inlen, double din[], int olen,
 
    t0 = GetClock();
 #endif
+   DEBUG;
+
    if (Op->matvec->func_ptr == NULL)
       pr_error("ML_Operator_Apply error : matvec not defined\n");
 
-   Op->matvec->func_ptr(Op,       inlen, din, olen, dout);
+   Op->matvec->func_ptr(Op,       inlen, din, olen, dout); // goto:fix
 
 #if defined(ML_TIMING) || defined(ML_FLOPS)
    Op->apply_time += (GetClock() - t0);
@@ -642,7 +644,7 @@ int ML_Operator_Apply(ML_Operator *Op, int inlen, double din[], int olen,
 /************************************************************************/
 
 int ML_Operator_ApplyAndResetBdryPts(ML_Operator *Op, int inlen,
-                      double din[], int olen, double dout[])
+                      double din[], int olen, double dout[]) // DONE
 {
    int i, length, *list;
 #if defined(ML_TIMING) || defined(ML_FLOPS)
@@ -650,17 +652,20 @@ int ML_Operator_ApplyAndResetBdryPts(ML_Operator *Op, int inlen,
 
    t0 = GetClock();
 #endif
+DEBUG;
    if (Op->matvec->func_ptr == NULL)
       pr_error("ML_Operator_ApplyAndRestBdryPts : matvec not defined.\n");
 
    /* apply grid transfer */
 
-   Op->matvec->func_ptr(Op,       inlen, din, olen, dout);
+   Op->matvec->func_ptr(Op,       inlen, din, olen, dout); // goto:fix
 
    /* apply boundary condition */
 
    ML_BdryPts_Get_Dirichlet_Grid_Info(Op->to->BCs, &length, &list);
-   for ( i = 0; i < length; i++ ) dout[list[i]] = 0.0;
+
+   #pragma omp parallel for default(none), private(i), shared(length, dout, list)
+   for ( i = 0; i < length; i++ ) dout[list[i]] = 0.0; // goto:fix? can I parallelize this ???
 #if defined(ML_TIMING) || defined(ML_FLOPS)
    Op->apply_time += (GetClock() - t0);
    Op->ntimes++;

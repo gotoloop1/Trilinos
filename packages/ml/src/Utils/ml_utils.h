@@ -27,6 +27,8 @@
 #endif
 #endif
 
+#include <stdbool.h>
+
 /*#include "ml_struct.h"*/
 #include "ml_config.h"
 #include "ml_common.h"
