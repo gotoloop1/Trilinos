@@ -7694,16 +7694,29 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) /
       DEBUG;
        ML_Operator_Apply(Amat, n, x, n, pAux); // goto:fix
 
-       #pragma omp parallel for default(none), private(i), shared(n, dk, rhs, pAux, theta, diagonal, x)
-       for (i = 0; i < n; i++) {
-	 dk[i] = (rhs[i] - pAux[i])/(theta*diagonal[i]);
-	 x[i] += dk[i];
+       if(DO_OPENMP(9, n)) {
+         #pragma omp parallel for default(none), private(i), shared(n, dk, rhs, pAux, theta, diagonal, x)
+         for (i = 0; i < n; i++) {
+            dk[i] = (rhs[i] - pAux[i])/(theta*diagonal[i]);
+            x[i] += dk[i];
+         }
+       } else {
+         for (i = 0; i < n; i++) {
+            dk[i] = (rhs[i] - pAux[i])/(theta*diagonal[i]);
+            x[i] += dk[i];
+         }
        }
      }
      else {
-      #pragma omp parallel for default(none), private(i), shared(n, x, dk, rhs, theta, diagonal)
-       for (i = 0; i < n; i++) {
-	 x[i] = dk[i] = rhs[i]/(theta*diagonal[i]);
+       if(DO_OPENMP(6, n)) {
+         #pragma omp parallel for default(none), private(i), shared(n, x, dk, rhs, theta, diagonal)
+         for (i = 0; i < n; i++) {
+            x[i] = dk[i] = rhs[i]/(theta*diagonal[i]);
+         }
+       } else {
+         for (i = 0; i < n; i++) {
+            x[i] = dk[i] = rhs[i]/(theta*diagonal[i]);
+         }
        }
      }
      for (k = 0; k < deg-1; k++) {
@@ -7714,10 +7727,17 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) /
        dtemp2 = 2.*rhokp1/delta;
        rhok = rhokp1;
 
-       #pragma omp parallel for default(none), private(i), shared(n, dk, dtemp1, dtemp2, rhs, pAux, diagonal, x)
-       for (i = 0; i < n; i++) {
-	 dk[i] = dtemp1 * dk[i] + dtemp2*(rhs[i]-pAux[i])/diagonal[i];
-	 x[i] += dk[i];
+       if(DO_OPENMP(11, n)) {
+         #pragma omp parallel for default(none), private(i), shared(n, dk, dtemp1, dtemp2, rhs, pAux, diagonal, x)
+         for (i = 0; i < n; i++) {
+            dk[i] = dtemp1 * dk[i] + dtemp2*(rhs[i]-pAux[i])/diagonal[i];
+            x[i] += dk[i];
+         }
+       } else {
+         for (i = 0; i < n; i++) {
+            dk[i] = dtemp1 * dk[i] + dtemp2*(rhs[i]-pAux[i])/diagonal[i];
+            x[i] += dk[i];
+         }
        }
      }
 

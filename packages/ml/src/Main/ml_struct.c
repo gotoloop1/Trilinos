@@ -26,6 +26,15 @@
 #include "mpi.h"
 #endif
 
+#include <omp.h>
+
+int omp_thread_count() {
+   static int thread_num = -1;
+   if(thread_num < 0) {
+      thread_num = omp_get_max_threads();
+   }
+   return thread_num;
+}
 
 /* ************************************************************************* *
  * Structure to hold user-selected ML output level.                          *
@@ -3326,8 +3335,12 @@ int ML_Solve_MGV( ML *ml , double *din, double *dout) // DONE
    level = ml->ML_finest_level;
    leng = ml->Amat[level].outvec_leng;
 
-   #pragma omp parallel for default(none), private(i), shared(leng, dout)
-   for ( i = 0; i < leng; i++ ) dout[i] = 0.0;
+   if(DO_OPENMP(1, leng)) {
+      #pragma omp parallel for default(none), private(i), shared(leng, dout)
+      for ( i = 0; i < leng; i++ ) dout[i] = 0.0;
+   } else {
+      for ( i = 0; i < leng; i++ ) dout[i] = 0.0;
+   }
 
    din_temp = (double*) ML_allocate( leng * sizeof(double) );
 
@@ -3369,8 +3382,12 @@ int ML_Solve_MGV( ML *ml , double *din, double *dout) // DONE
    } else {
       scales = NULL;
 
-      #pragma omp parallel for default(none), private(i), shared(leng, din_temp, din)
-      for ( i = 0; i < leng; i++ ) din_temp[i] = din[i];
+      if(DO_OPENMP(2, leng)) {
+         #pragma omp parallel for default(none), private(i), shared(leng, din_temp, din)
+         for ( i = 0; i < leng; i++ ) din_temp[i] = din[i];
+      } else {
+         for ( i = 0; i < leng; i++ ) din_temp[i] = din[i];
+      }
    }
 
    /* ------------------------------------------------------------ */
@@ -3932,8 +3949,12 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
    rhss = (double *) ML_allocate( lengf * sizeof(double) ); // goto:fix?
    ML_DVector_GetDataPtr(curr->Amat_Normalization, &normalscales) ;
 
-   #pragma omp parallel for default(none), private(i), shared(lengf, rhss, rhs)
-   for ( i = 0; i < lengf; i++ ) rhss[i] = rhs[i];
+   if(DO_OPENMP(2, lengf)) {
+      #pragma omp parallel for default(none), private(i), shared(lengf, rhss, rhs)
+      for ( i = 0; i < lengf; i++ ) rhss[i] = rhs[i];
+   } else {
+      for ( i = 0; i < lengf; i++ ) rhss[i] = rhs[i];
+   }
 
 #ifdef ML_ANALYSIS
    assert(false);
@@ -4024,8 +4045,12 @@ DEBUG;
       {
    	ML_Operator_Apply(Amat, lengf, sol, lengf, res); // goto:fix
 
-         #pragma omp parallel for default(none), private(i), shared(lengf, res, rhss)
-         for ( i = 0; i < lengf; i++ ) res[i] = rhss[i] - res[i];
+         if(DO_OPENMP(3, lengf)) {
+            #pragma omp parallel for default(none), private(i), shared(lengf, res, rhss)
+            for ( i = 0; i < lengf; i++ ) res[i] = rhss[i] - res[i];
+         } else {
+            for ( i = 0; i < lengf; i++ ) res[i] = rhss[i] - res[i];
+         }
       }
       else {
          assert(false);
@@ -4147,8 +4172,12 @@ DEBUG;
       rhs2 = (double *) ML_allocate(lengc*sizeof(double)); // goto:fix?
       sol2 = (double *) ML_allocate(lengc*sizeof(double)); // goto:fix?
 
-      #pragma omp parallel for default(none), private(i), shared(lengc, sol2)
-      for ( i = 0; i < lengc; i++ ) sol2[i] = 0.0;
+      if(DO_OPENMP(1, lengc)) {
+         #pragma omp parallel for default(none), private(i), shared(lengc, sol2)
+         for ( i = 0; i < lengc; i++ ) sol2[i] = 0.0;
+      } else {
+         for ( i = 0; i < lengc; i++ ) sol2[i] = 0.0;
+      }
 
       /* --------------------------------------------------------- */
       /* normalization                                             */
@@ -4295,8 +4324,12 @@ DEBUG;
 #if defined(ML_SYNCH)
    ML_Comm_Barrier(comm);
 #endif
-      #pragma omp parallel for default(none), private(i), shared(lengf, sol, res)
-      for ( i = 0; i < lengf; i++ ) sol[i] += res[i];
+      if(DO_OPENMP(3, lengf)) {
+         #pragma omp parallel for default(none), private(i), shared(lengf, sol, res)
+         for ( i = 0; i < lengf; i++ ) sol[i] += res[i];
+      } else {
+         for ( i = 0; i < lengf; i++ ) sol[i] += res[i];
+      }
 #if defined(RAP_CHECK) || defined(ANALYSIS)
    assert(false)
    /* When using RAP, the restricted residual after the coarse grid */

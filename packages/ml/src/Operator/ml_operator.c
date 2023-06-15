@@ -664,8 +664,12 @@ DEBUG;
 
    ML_BdryPts_Get_Dirichlet_Grid_Info(Op->to->BCs, &length, &list);
 
-   #pragma omp parallel for default(none), private(i), shared(length, dout, list)
-   for ( i = 0; i < length; i++ ) dout[list[i]] = 0.0; // goto:fix? can I parallelize this ???
+   if(DO_OPENMP(3, length)) {
+      #pragma omp parallel for default(none), private(i), shared(length, dout, list)
+      for ( i = 0; i < length; i++ ) dout[list[i]] = 0.0; // goto:fix? can I parallelize this ???
+   } else {
+      for ( i = 0; i < length; i++ ) dout[list[i]] = 0.0;
+   }
 #if defined(ML_TIMING) || defined(ML_FLOPS)
    Op->apply_time += (GetClock() - t0);
    Op->ntimes++;

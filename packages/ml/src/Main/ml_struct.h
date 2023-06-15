@@ -16,6 +16,10 @@
 //#define DEBUG printf("passed %s:%d\n", __FILE__, __LINE__)
 #define DEBUG
 
+#define DO_OPENMP(param, len) (omp_thread_count() * 32 < (param) * (len))
+
+int omp_thread_count();
+
 /* ******************************************************************** */
 /* data structure type definition                                       */
 /* ******************************************************************** */
