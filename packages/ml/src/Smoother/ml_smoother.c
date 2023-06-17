@@ -7682,8 +7682,12 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) /
    /* This is meant for the case when the matrix is the identity.*/
 
    if ((lambda_min == 1.0) && (lambda_min == lambda_max)) {
-      assert(false);
-     for (i = 0; i < n; i++) x[i] = rhs[i]/diagonal[i];
+      if(DO_OPENMP(3, n)) {
+         #pragma omp parallel for default(none), private(i), shared(n, x, rhs, diagonal)
+         for (i = 0; i < n; i++) x[i] = rhs[i]/diagonal[i];
+      } else {
+         for (i = 0; i < n; i++) x[i] = rhs[i]/diagonal[i];
+      }
      if (pAux != NULL) ML_free(pAux);
      if (dk   != NULL) ML_free(dk);
      return 0;
