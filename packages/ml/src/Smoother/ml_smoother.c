@@ -7590,7 +7590,6 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) /
    ML_Operator     *Amat = smooth_ptr->my_level->Amat;
    struct MLSthing *widget;
    int              deg, i, j, k, n, nn;
-   double          *pAux = NULL, *dk = NULL;
    double beta, alpha, theta, delta, s1, rhok, rhokp1;
    int             *cols, allocated_space;
    double          *diagonal, *vals, *tdiag, dtemp1, dtemp2;
@@ -7612,15 +7611,6 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) /
    else {
      lambda_min = Amat->lambda_min;
      lambda_max = Amat->lambda_max;
-   }
-
-   pAux  = (double *) ML_allocate((n+1)*sizeof(double)); // goto:fix?
-   dk     = (double *) ML_allocate((n+1)*sizeof(double)); // goto:fix?
-
-   if (pAux == NULL) pr_error("ML_Smoother_Cheby_Apply: allocation failed\n");
-   if (dk    == NULL) {
-     pr_error("ML_Smoother_Cheby_Apply: allocation failed\n");
-     ML_avoid_unused_param((void *) &inlen);
    }
 
    beta = (widget->eig_boost)*lambda_max;   /* try and bracket high */
@@ -7688,31 +7678,62 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) /
       } else {
          for (i = 0; i < n; i++) x[i] = rhs[i]/diagonal[i];
       }
-     if (pAux != NULL) ML_free(pAux);
-     if (dk   != NULL) ML_free(dk);
      return 0;
    }
 
+   ML_Smoother_MatrixPower mpk;
    if (widget->block_scaling == NULL) { /* normal point scaling */
      if (smooth_ptr->init_guess == ML_NONZERO) {
       DEBUG;
-       ML_Operator_Apply(Amat, n, x, n, pAux); // goto:fix
+      mpk.init_nonzero = 1;
+      mpk.deg = deg;
+      mpk.dtemp1 = (double*)malloc(sizeof(double) * deg);
+      mpk.dtemp2 = (double*)malloc(sizeof(double) * deg);
 
-       if(DO_OPENMP(9, n)) {
-         #pragma omp parallel for default(none), private(i), shared(n, dk, rhs, pAux, theta, diagonal, x)
-         for (i = 0; i < n; i++) {
-            dk[i] = (rhs[i] - pAux[i])/(theta*diagonal[i]);
-            x[i] += dk[i];
-         }
-       } else {
-         for (i = 0; i < n; i++) {
-            dk[i] = (rhs[i] - pAux[i])/(theta*diagonal[i]);
-            x[i] += dk[i];
-         }
-       }
+      mpk.dtemp1[0] = 0.0;
+      mpk.dtemp2[0] = 1.0 / theta;
+      for(i = 1; i < deg; i++) {
+         rhokp1 = 1./(2.*s1 - rhok);
+         dtemp1 = rhokp1*rhok;
+         dtemp2 = 2.*rhokp1/delta;
+         rhok = rhokp1;
+
+         mpk.dtemp1[i] = dtemp1;
+         mpk.dtemp2[i] = dtemp2;
+      }
+      /*
+      ML_Operator_Apply(Amat, n, x, n, pAux); // goto:fix
+      for (i = 0; i < n; i++) {
+         dk[i] = (rhs[i] - pAux[i])/(theta*diagonal[i]);
+         x[i] += dk[i];
+      }*/
      }
      else {
        if(DO_OPENMP(6, n)) {
+         #pragma omp parallel for default(none), private(i), shared(n, x, rhs, theta, diagonal)
+         for (i = 0; i < n; i++) {
+            x[i] = rhs[i]/(theta*diagonal[i]);
+         }
+       } else {
+         for (i = 0; i < n; i++) {
+            x[i] = rhs[i]/(theta*diagonal[i]);
+         }
+       }
+      mpk.init_nonzero = 0;
+      mpk.deg = deg - 1;
+      mpk.dtemp1 = (double*)malloc(sizeof(double) * (deg - 1));
+      mpk.dtemp2 = (double*)malloc(sizeof(double) * (deg - 1));
+
+      for(i = 0; i < deg - 1; i++) {
+         rhokp1 = 1./(2.*s1 - rhok);
+         dtemp1 = rhokp1*rhok;
+         dtemp2 = 2.*rhokp1/delta;
+         rhok = rhokp1;
+
+         mpk.dtemp1[i] = dtemp1;
+         mpk.dtemp2[i] = dtemp2;
+      }
+       /*if(DO_OPENMP(6, n)) {
          #pragma omp parallel for default(none), private(i), shared(n, x, dk, rhs, theta, diagonal)
          for (i = 0; i < n; i++) {
             x[i] = dk[i] = rhs[i]/(theta*diagonal[i]);
@@ -7721,8 +7742,17 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) /
          for (i = 0; i < n; i++) {
             x[i] = dk[i] = rhs[i]/(theta*diagonal[i]);
          }
-       }
+       }*/
      }
+      mpk.rhs = rhs;
+      mpk.diagonal = diagonal;
+      mpk.x = x;
+
+      ML_Operator_Apply(Amat, 0, (double*)&mpk, 0, NULL);
+      
+      free(mpk.dtemp1);
+      free(mpk.dtemp2);
+      /*
      for (k = 0; k < deg-1; k++) {
       DEBUG;
        ML_Operator_Apply(Amat, n, x, n, pAux); // goto:fix
@@ -7730,24 +7760,15 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) /
        dtemp1 = rhokp1*rhok;
        dtemp2 = 2.*rhokp1/delta;
        rhok = rhokp1;
-
-       if(DO_OPENMP(11, n)) {
-         #pragma omp parallel for default(none), private(i), shared(n, dk, dtemp1, dtemp2, rhs, pAux, diagonal, x)
-         for (i = 0; i < n; i++) {
-            dk[i] = dtemp1 * dk[i] + dtemp2*(rhs[i]-pAux[i])/diagonal[i];
-            x[i] += dk[i];
-         }
-       } else {
-         for (i = 0; i < n; i++) {
-            dk[i] = dtemp1 * dk[i] + dtemp2*(rhs[i]-pAux[i])/diagonal[i];
-            x[i] += dk[i];
-         }
-       }
-     }
-
+      for (i = 0; i < n; i++) {
+         dk[i] = dtemp1 * dk[i] + dtemp2*(rhs[i]-pAux[i])/diagonal[i];
+         x[i] += dk[i];
+      }matrix_power_kernel
+     }*/
    }
    else { /* block scaling */
       assert(false);
+      /*
      if (smooth_ptr->init_guess == ML_NONZERO) {
        ML_Operator_Apply(Amat, n, x, n, pAux);
        for (i = 0; i < n; i++) 	 dk[i] = (rhs[i] - pAux[i])/theta;
@@ -7771,13 +7792,11 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[]) /
        for (i = 0; i < n; i++) pAux[i] = rhs[i]-pAux[i];
        ML_BlockDinv(widget->block_scaling, n, pAux);
        for (i = 0; i < n; i++) {
-	 dk[i] = dtemp1 * dk[i] + dtemp2*pAux[i];
-	 x[i] += dk[i];
+	      dk[i] = dtemp1 * dk[i] + dtemp2*pAux[i];
+	      x[i] += dk[i];
        }
-     }
+     }*/
    }
-   ML_free(dk);
-   ML_free(pAux);
 
    return 0;
 }

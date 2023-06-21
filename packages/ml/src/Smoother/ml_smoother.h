@@ -48,6 +48,17 @@ typedef struct ML_Sm_BlockHiptmair_Data_Struct ML_Sm_BlockHiptmair_Data;
 #include <Epetra_MultiVector.h>
 #endif
 
+typedef struct
+{
+   int deg;
+   int init_nonzero;
+   double *dtemp1;
+   double *dtemp2;
+   double *rhs;
+   double *diagonal;
+   double *x;
+} ML_Smoother_MatrixPower;
+
 /* ******************************************************************** */
 /* data definition for the ML_Smoother Class                            */
 /* ******************************************************************** */
