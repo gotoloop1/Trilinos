@@ -660,7 +660,10 @@ int ML_Operator_ApplyAndResetBdryPts(ML_Operator *Op, int inlen,
    /* apply boundary condition */
 
    ML_BdryPts_Get_Dirichlet_Grid_Info(Op->to->BCs, &length, &list);
+
+   #pragma acc kernels loop independent
    for ( i = 0; i < length; i++ ) dout[list[i]] = 0.0;
+
 #if defined(ML_TIMING) || defined(ML_FLOPS)
    Op->apply_time += (GetClock() - t0);
    Op->ntimes++;
@@ -791,13 +794,14 @@ int ML_Operator_Print(ML_Operator *matrix, const char label[])
    return 0;
 }
 
-int ML_Operator_ComputeNumNzs(ML_Operator *matrix)
+long long ML_Operator_ComputeNumNzs(ML_Operator *matrix)
 {
 
    int    i;
    int    *bindx;
    double *val;
-   int    allocated, row_length, Nnz = 0;
+   int    allocated, row_length;
+   long long Nnz = 0;
 
    if ( matrix->getrow == NULL) return(Nnz);
 

@@ -12,6 +12,9 @@
 #include "ml_utils.h"
 #include "ml_memory.h"
 #include "ml_xyt.h"
+#ifdef _OPENACC
+#include <openacc.h>
+#endif
 
 /* ******************************************************************** */
 /* Fill in the pre-communication struction of an ML_Operator's getrow   */
@@ -1238,6 +1241,9 @@ void ML_exchange_bdry(double x[], ML_CommInfoOP *comm_info, int start_location,
 	ML_Comm *comm, int overwrite_or_add, ML_Comm_Envelope *envelope)
 {
   double          *send_buf, **rcv_buf, *tempv;
+#ifdef _OPENACC
+  void            *send_buf_dev, **rcv_buf_dev;
+#endif
   int              type, N_neighbors, *temp, i, j, k, rtype;
   USR_REQ         *request;
   ML_NeighborList *neighbor;
@@ -1256,6 +1262,9 @@ void ML_exchange_bdry(double x[], ML_CommInfoOP *comm_info, int start_location,
   {
      request = (USR_REQ  *)  ML_allocate(N_neighbors*sizeof(USR_REQ ));
      rcv_buf = (double  **)  ML_allocate(N_neighbors*sizeof(double *));
+#ifdef _OPENACC
+     rcv_buf_dev = (void**)  ML_allocate(N_neighbors*sizeof(void *));
+#endif
   } else { request = NULL; rcv_buf = NULL;}
 
   /*
@@ -1271,6 +1280,14 @@ void ML_exchange_bdry(double x[], ML_CommInfoOP *comm_info, int start_location,
     neighbor = &(comm_info->neighbors[i]);
     rtype = type;   j = sizeof(double)* neighbor->N_rcv;
     rcv_buf[i] = (double *)  ML_allocate(j);
+#ifdef _OPENACC
+    if(j > 0) {
+      rcv_buf_dev[i] = acc_malloc(j);
+      acc_map_data(rcv_buf[i], rcv_buf_dev[i], j);
+    }
+#endif
+
+    #pragma acc host_data use_device(rcv_buf[i])
     comm->USR_irecvbytes((void *) rcv_buf[i], (unsigned int)j,
 		&(neighbor->ML_id), &rtype, comm->USR_comm, request+i);
   }
@@ -1282,13 +1299,31 @@ void ML_exchange_bdry(double x[], ML_CommInfoOP *comm_info, int start_location,
     neighbor = &(comm_info->neighbors[i]);
     j = sizeof(double)* neighbor->N_send;
     send_buf = (double *)  ML_allocate(j);
+#ifdef _OPENACC
+    if(j > 0) {
+      send_buf_dev = acc_malloc(j);
+      acc_map_data(send_buf, send_buf_dev, j);
+    }
+#endif
     temp = comm_info->neighbors[i].send_list;
+
+    #pragma acc data present(send_buf)
+    #pragma acc kernels loop independent
     for (k = 0; k < neighbor->N_send; k++)
     {
         send_buf[k] = x[ temp[k] ];
     }
+
+    #pragma acc host_data use_device(send_buf)
     comm->USR_sendbytes((void *) send_buf, (unsigned) j, neighbor->ML_id,
                           rtype, comm->USR_comm);
+
+#ifdef _OPENACC
+    if(j > 0) {
+      acc_unmap_data(send_buf);
+      acc_free(send_buf_dev);
+    }
+#endif
     if (send_buf != NULL) ML_free(send_buf);
   }
 
@@ -1298,32 +1333,43 @@ void ML_exchange_bdry(double x[], ML_CommInfoOP *comm_info, int start_location,
   {
     neighbor = &(comm_info->neighbors[i]);
     rtype = type;   j = sizeof(double)* neighbor->N_rcv;
+
+    #pragma acc host_data use_device(rcv_buf[i])
     comm->USR_cheapwaitbytes((void *) rcv_buf[i], (unsigned int) j, &(neighbor->ML_id),
                         &rtype, comm->USR_comm, request+i);
+
     temp = comm_info->neighbors[i].rcv_list;
     if (temp == NULL)
     {
        if (overwrite_or_add == ML_ADD)
        {
+          #pragma acc data present(rcv_buf[i])
+          #pragma acc kernels loop independent
           for (k = 0; k < neighbor->N_rcv; k++)
           {
-             x[ start_location ] = rcv_buf[i][k] + x[start_location];
-             start_location++;
+             x[ start_location + k ] = rcv_buf[i][k] + x[start_location + k];
           }
+
+          start_location += neighbor->N_rcv;
        }
        else
        {
+          #pragma acc data present(rcv_buf[i])
+          #pragma acc kernels loop independent
           for (k = 0; k < neighbor->N_rcv; k++)
           {
-             x[ start_location ] = rcv_buf[i][k];
-             start_location++;
+             x[ start_location + k ] = rcv_buf[i][k];
           }
+
+          start_location += neighbor->N_rcv;
        }
     }
     else
     {
        if (overwrite_or_add == ML_ADD)
        {
+          #pragma acc data present(rcv_buf[i])
+          #pragma acc kernels loop independent
           for (k = 0; k < neighbor->N_rcv; k++)
           {
              x[ temp[k] ] = rcv_buf[i][k] + x[temp[k]];
@@ -1331,26 +1377,46 @@ void ML_exchange_bdry(double x[], ML_CommInfoOP *comm_info, int start_location,
        }
        else
        {
+          #pragma acc data present(rcv_buf[i])
+          #pragma acc kernels loop independent
           for (k = 0; k < neighbor->N_rcv; k++)
           {
              x[ temp[k] ] = rcv_buf[i][k];
           }
        }
     }
+
+#ifdef _OPENACC
+    if(j > 0) {
+      acc_unmap_data(rcv_buf[i]);
+      acc_free(rcv_buf_dev[i]);
+    }
+#endif
     if (rcv_buf[i] != NULL) ML_free(rcv_buf[i]);
   }
-  if ( N_neighbors > 0 ) ML_free(rcv_buf);
-  if ( N_neighbors > 0 ) ML_free(request);
+  if ( N_neighbors > 0 ) {
+#ifdef _OPENACC
+   ML_free(rcv_buf_dev);
+#endif
+   ML_free(rcv_buf);
+   ML_free(request);
+  }
 
   if (comm_info->remap != NULL)
   {
      tempv = (double *) ML_allocate((comm_info->remap_max+1)*sizeof(double));
+
+     #pragma acc data create(tempv)
+     #pragma acc kernels loop independent
      for (k = 0; k < comm_info->remap_length; k++)
      {
         j = comm_info->remap[k];
         if (j >= 0) tempv[ j ] = x[k];
      }
+
+     #pragma acc kernels loop independent
      for (i = 0; i < comm_info->remap_max; i++) x[i] = tempv[i];
+
      ML_free(tempv);
   }
 

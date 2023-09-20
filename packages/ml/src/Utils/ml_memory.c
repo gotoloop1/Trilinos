@@ -37,9 +37,10 @@ void *ml_void_mem_ptr;
 /* -------------------------------------------------------------------- */
 
 #define ML_FUNCTION_NAME "ML_memory_alloc"
-int ML_memory_alloc( void **memptr, unsigned int leng, char const *name )
+int ML_memory_alloc( void **memptr, ml_size_t leng, char const *name )
 {
-   int  i, *int_ptr, nchunks, ndouble=sizeof(double);
+   int  i, *int_ptr;
+   ml_size_t nchunks, ndouble=sizeof(double);
    char *var_ptr;
    double *dptr;
 
@@ -75,7 +76,7 @@ TAKING THIS OUT TO HANDLE CASE WHEN THERE ARE NO POINTS ON PROC
       /* -------------------------------------------------------------- */
 
       nchunks = leng / ndouble;
-      if ((nchunks * ndouble) < (int) leng) nchunks = nchunks + 3;
+      if ((nchunks * ndouble) < leng) nchunks = nchunks + 3;
       else                            nchunks = nchunks + 2;
       var_ptr = (char *) ML_allocate(nchunks*ndouble);
       dptr = (double *) var_ptr;
