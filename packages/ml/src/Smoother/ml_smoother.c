@@ -7672,7 +7672,9 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
    /* This is meant for the case when the matrix is the identity.*/
 
    if ((lambda_min == 1.0) && (lambda_min == lambda_max)) {
+     #pragma acc kernels loop independent
      for (i = 0; i < n; i++) x[i] = rhs[i]/diagonal[i];
+
      if (pAux != NULL) ML_free(pAux);
      if (dk   != NULL) ML_free(dk);
      return 0;
@@ -7682,14 +7684,17 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
 
      if (smooth_ptr->init_guess == ML_NONZERO) {
        ML_Operator_Apply(Amat, n, x, n, pAux);
+
+       #pragma acc kernels loop independent
        for (i = 0; i < n; i++) {
-	 dk[i] = (rhs[i] - pAux[i])/(theta*diagonal[i]);
-	 x[i] += dk[i];
+         dk[i] = (rhs[i] - pAux[i])/(theta*diagonal[i]);
+         x[i] += dk[i];
        }
      }
      else {
+       #pragma acc kernels loop independent
        for (i = 0; i < n; i++) {
-	 x[i] = dk[i] = rhs[i]/(theta*diagonal[i]);
+	      x[i] = dk[i] = rhs[i]/(theta*diagonal[i]);
        }
      }
 
@@ -7699,9 +7704,11 @@ int ML_Cheby(ML_Smoother *sm, int inlen, double x[], int outlen, double rhs[])
        dtemp1 = rhokp1*rhok;
        dtemp2 = 2.*rhokp1/delta;
        rhok = rhokp1;
+
+       #pragma acc kernels loop independent
        for (i = 0; i < n; i++) {
-	 dk[i] = dtemp1 * dk[i] + dtemp2*(rhs[i]-pAux[i])/diagonal[i];
-	 x[i] += dk[i];
+         dk[i] = dtemp1 * dk[i] + dtemp2*(rhs[i]-pAux[i])/diagonal[i];
+         x[i] += dk[i];
        }
      }
 

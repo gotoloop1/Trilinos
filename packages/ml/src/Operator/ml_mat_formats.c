@@ -819,12 +819,16 @@ int MSR_matvec(ML_Operator *Amat_in, int ilen, double p[], int olen, double ap[]
    bindx = temp->columns;
    getrow_comm= Amat->getrow->pre_comm;
    if (getrow_comm != NULL) {
-      p2 = (double *) ML_allocate((Nrows+getrow_comm->minimum_vec_size+1)*
+      int size = Nrows+getrow_comm->minimum_vec_size+1;
+      p2 = (double *) ML_allocate(size*
                                   sizeof(double));
       if (p2 == NULL)
 	pr_error("MSR_matvec(%d): out of space\n",Amat->comm->ML_mypid);
 
+      #pragma acc data create(p2[:size])
+      #pragma acc kernels loop independent
       for (i = 0; i < Nrows; i++) p2[i] = p[i];
+
       ML_exchange_bdry(p2,getrow_comm, Nrows, comm, ML_OVERWRITE,NULL);
    }
    else p2 = p;
@@ -832,6 +836,17 @@ int MSR_matvec(ML_Operator *Amat_in, int ilen, double p[], int olen, double ap[]
 #if defined(ML_TIMING) || defined(ML_TIMING_DETAILED)
    t0 = GetClock();
 #endif
+
+#ifdef _OPENACC
+   #pragma acc kernels loop independent
+   for(int i = 0; i < Nrows; i++) {
+      double sum = val[i] * p2[i];
+      for(int j = bindx[i]; j < bindx[i + 1]; j++) {
+         sum += val[j] * p2[bindx[j]];
+      }
+      ap[i] = sum;
+   }
+#else
   j = bindx[0];
   bindx_ptr = &bindx[j];
   for (i = 0; i < Nrows; i++) {
@@ -855,13 +870,17 @@ int MSR_matvec(ML_Operator *Amat_in, int ilen, double p[], int olen, double ap[]
     }
     ap[i] = sum;
   }
+#endif
+
 #if defined(ML_TIMING) || defined(ML_TIMING_DETAILED)
    Amat->apply_without_comm_time += (GetClock() - t0);
 #endif
 
 
   if (getrow_comm != NULL) {
+     #pragma acc kernels loop independent
      for (i = 0; i < Nrows; i++) p[i] = p2[i];
+
      ML_free(p2);
   }
   return(1);
@@ -903,10 +922,15 @@ int CSR_matvec(ML_Operator *Amat_in, int ilen, double p[], int olen, double ap[]
 
    getrow_comm= Amat->getrow->pre_comm;
    if (getrow_comm != NULL) {
-     p2 = (double *) ML_allocate((getrow_comm->minimum_vec_size+ilen+1)*
+     int size = getrow_comm->minimum_vec_size+ilen+1;
+
+     p2 = (double *) ML_allocate(size*
                                   sizeof(double));
      if (p2 == NULL)
        pr_error("CSR_matvec(%d): out of space\n",Amat->comm->ML_mypid);
+
+     #pragma acc data create(p2[:size])
+     #pragma acc kernels loop independent
      for (i = 0; i < ilen; i++) p2[i] = p[i];
 
      ML_exchange_bdry(p2,getrow_comm, ilen, comm, ML_OVERWRITE,NULL);
@@ -928,6 +952,8 @@ int CSR_matvec(ML_Operator *Amat_in, int ilen, double p[], int olen, double ap[]
    /* time only the real apply */
    t0 = GetClock();
 #endif
+
+   #pragma acc kernels loop independent
    for (i = 0; i < Nstored; i++) {
      sum = 0;
      for (k = row_ptr[i]; k < row_ptr[i+1]; k++)
@@ -937,6 +963,7 @@ int CSR_matvec(ML_Operator *Amat_in, int ilen, double p[], int olen, double ap[]
 
      ap2[i] = sum;
    }
+
 #if defined(ML_TIMING) || defined(ML_TIMING_DETAILED)
    Amat->apply_without_comm_time += (GetClock() - t0);
 #endif
@@ -953,7 +980,10 @@ int CSR_matvec(ML_Operator *Amat_in, int ilen, double p[], int olen, double ap[]
          }
       }
       ML_exchange_bdry(ap2,getrow_comm, Nstored, comm, ML_ADD,NULL);
+
+      #pragma acc kernels loop independent
       for (jj = 0; jj < olen; jj++) ap[jj] = ap2[jj];
+
       ML_free(ap2);
   }
   return(1);

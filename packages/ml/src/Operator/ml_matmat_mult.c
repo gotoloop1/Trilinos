@@ -698,6 +698,7 @@ void ML_blkmatmat_mult(ML_Operator *Amatrix, ML_Operator *Bmatrix,
    					 NcolsPerBlock*NcolsPerBlock* sizeof(double));
 
     	if ((Cindx == NULL) || (Cbindx == NULL) || (Cvalues == NULL) ) {
+                  printf("b\n");
     	  printf("Not enough space for matrix\n");
     	  exit(1);
     	}
@@ -871,12 +872,14 @@ void ML_matmat_mult(ML_Operator *Amatrix, ML_Operator *Bmatrix,
                     ML_Operator **Cmatrix)
 /* -------------------------------------------------------------------- */
 {
-   int    i,k, jj, next_nz, Ncols, N, Nnz_estimate, sub_i, accum_size;
+   int    i,k, jj, Ncols, N, sub_i, accum_size;
+   long long next_nz, Nnz_estimate;
    int    *C_ptr, *Ccol, *A_i_cols, rowi_N, *accum_col, row2_N;
    double *Cval, *A_i_vals, multiplier, *accum_val, dtemp;
    ML_Operator *current, *previous_matrix, *next;
    struct ML_CSR_MSRdata *temp;
-   int    max_nz_row_new = 0, total_nz = 0, index_length = 0;
+   int    max_nz_row_new = 0, index_length = 0;
+   long long total_nz = 0;
    int    min_nz_row_new = 1e6;
    double A_avg_nz_per_row=0.0, B_avg_nz_per_row=0.0, estimated_nz_per_row;
    int    A_i_allocated;
@@ -1042,7 +1045,7 @@ void ML_matmat_mult(ML_Operator *Amatrix, ML_Operator *Bmatrix,
 
    estimated_nz_per_row = sqrt(A_avg_nz_per_row) + sqrt(B_avg_nz_per_row) - 1.;
    estimated_nz_per_row *= estimated_nz_per_row;
-   Nnz_estimate = (int) (((double) Amatrix->getrow->Nrows) *
+   Nnz_estimate = (long long) (((double) Amatrix->getrow->Nrows) *
                            estimated_nz_per_row*.75) + 100;
    if (Nnz_estimate <= Bmatrix->max_nz_per_row)
       Nnz_estimate = Bmatrix->max_nz_per_row + 1;
@@ -1063,7 +1066,7 @@ void ML_matmat_mult(ML_Operator *Amatrix, ML_Operator *Bmatrix,
    }
    if ( ((Cval == NULL)||(Ccol==NULL)) && (N != 0)) {
       printf("Not enough space for new matrix in ML_matmatmult().\n");
-      printf("trying to allocate %d elements \n",Nnz_estimate);
+      printf("trying to allocate %lld elements \n",Nnz_estimate);
       printf("Left  matrix has %d rows \n", Amatrix->getrow->Nrows);
       printf("Right matrix has %d rows \n", Bmatrix->getrow->Nrows);
       printf("Left  matrix has %d nz per row\n", Amatrix->max_nz_per_row);
@@ -1446,10 +1449,10 @@ void ML_matmat_mult(ML_Operator *Amatrix, ML_Operator *Bmatrix,
          if (i != 0) {
             dtemp = ((double) N-i)/ ((double) i);
             dtemp *= (double) total_nz;
-            Nnz_estimate = (int)(1.1*dtemp);
+            Nnz_estimate = (long long)(1.1*dtemp);
             Nnz_estimate += Ncols;
          }
-         else Nnz_estimate = Nnz_estimate*N + Ncols;
+         else Nnz_estimate = Nnz_estimate*(long long)N + Ncols;
 
          C_ptr = (int    *) ML_allocate( (N-i+1)* sizeof(int) );
          Ccol  = (int    *) ML_allocate( Nnz_estimate* sizeof(int) );

@@ -3323,7 +3323,11 @@ int ML_Solve_MGV( ML *ml , double *din, double *dout)
 
    level = ml->ML_finest_level;
    leng = ml->Amat[level].outvec_leng;
+
+   #pragma acc data create(dout[:leng])
+   #pragma acc kernels loop independent
    for ( i = 0; i < leng; i++ ) dout[i] = 0.0;
+
    din_temp = (double*) ML_allocate( leng * sizeof(double) );
 
    /* ------------------------------------------------------------ */
@@ -3335,12 +3339,16 @@ int ML_Solve_MGV( ML *ml , double *din, double *dout)
    {
       if (ml->Amat[level].diagonal != NULL) {
          ML_DVector_GetDataPtr(ml->Amat[level].diagonal,&diag);
+
+         #pragma acc kernels loop independent
          for ( i = 0; i < dir_leng; i++ ) {
             k = dir_list[i];
             dout[k] = din[k] / diag[k];
          }
       } else {
          diag = NULL;
+
+         #pragma acc kernels loop independent
          for ( i = 0; i < dir_leng; i++ ) {
             k = dir_list[i];
             dout[k] = din[k];
@@ -3358,9 +3366,14 @@ int ML_Solve_MGV( ML *ml , double *din, double *dout)
    scales = NULL;
 
    if ( scales != NULL ) {
+      #pragma acc data create(din_temp[:leng])
+      #pragma acc kernels loop independent
       for ( i = 0; i < leng; i++ ) din_temp[i] = din[i] / scales[i];
    } else {
       scales = NULL;
+
+      #pragma acc data create(din_temp[:leng])
+      #pragma acc kernels loop independent
       for ( i = 0; i < leng; i++ ) din_temp[i] = din[i];
    }
 
@@ -3919,6 +3932,9 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
 
    rhss = (double *) ML_allocate( lengf * sizeof(double) );
    ML_DVector_GetDataPtr(curr->Amat_Normalization, &normalscales) ;
+
+   #pragma acc data create(rhss[:lengf])
+   #pragma acc kernels loop independent
    for ( i = 0; i < lengf; i++ ) rhss[i] = rhs[i];
 
 #ifdef ML_ANALYSIS
@@ -3997,7 +4013,9 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
       if ( ( approx_all_zeros != ML_ZERO ) ||
            ( pre->smoother->func_ptr != NULL) )
       {
-   	ML_Operator_Apply(Amat, lengf, sol, lengf, res);
+   	   ML_Operator_Apply(Amat, lengf, sol, lengf, res);
+
+         #pragma acc kernels loop independent
          for ( i = 0; i < lengf; i++ ) res[i] = rhss[i] - res[i];
       }
       else for ( i = 0; i < lengf; i++ ) res[i] = rhss[i];
@@ -4116,6 +4134,8 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
 
       rhs2 = (double *) ML_allocate(lengc*sizeof(double));
       sol2 = (double *) ML_allocate(lengc*sizeof(double));
+
+      #pragma acc kernels loop independent
       for ( i = 0; i < lengc; i++ ) sol2[i] = 0.0;
 
       /* --------------------------------------------------------- */
@@ -4249,6 +4269,7 @@ double ML_Cycle_MG(ML_1Level *curr, double *sol, double *rhs,
 #if defined(ML_SYNCH)
    ML_Comm_Barrier(comm);
 #endif
+      #pragma acc kernels loop independent
       for ( i = 0; i < lengf; i++ ) sol[i] += res[i];
 #if defined(RAP_CHECK) || defined(ANALYSIS)
 

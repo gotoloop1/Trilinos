@@ -432,7 +432,8 @@ void ML_get_matrow_CSR(ML_Operator *input_matrix, int N_requested_rows,
    ML_Operator *next;
    double *t2;
    struct ML_CSR_MSRdata *matrix;
-   int    *rowptr, *bindx, *col_ptr, itemp, j;
+   int    *rowptr, *bindx, *col_ptr, j;
+   long long itemp, rtemp;
    double *val, *val_ptr;
 
 
@@ -470,10 +471,17 @@ void ML_get_matrow_CSR(ML_Operator *input_matrix, int N_requested_rows,
    matrix = (struct ML_CSR_MSRdata *) input_matrix->data;
    rowptr = matrix->rowptr;
    itemp   = rowptr[row];
+   if(itemp < 0) {
+      itemp += ((long long)1 << 32);
+   }
    bindx   = &(matrix->columns[itemp]);
    val     = &(matrix->values[itemp]);
 
-   *row_lengths = rowptr[row+1] - itemp;
+   rtemp = rowptr[row+1];
+   if(rtemp < 0) {
+      rtemp += ((long long)1 << 32);
+   }
+   *row_lengths = rtemp - itemp;
 
    if (*row_lengths+index > *allocated_space) {
       *allocated_space = 2*(*allocated_space) + 1;
@@ -517,7 +525,8 @@ void ML_get_row_CSR_norow_map(ML_Operator *input_matrix, int N_requested_rows,
    ML_Operator *next;
    double *t2;
    struct ML_CSR_MSRdata *matrix;
-   int    *rowptr, *bindx, *col_ptr, itemp, j;
+   int    *rowptr, *bindx, *col_ptr, j;
+   long long itemp, rtemp;
    double *val, *val_ptr;
 
 
@@ -547,10 +556,17 @@ void ML_get_row_CSR_norow_map(ML_Operator *input_matrix, int N_requested_rows,
    matrix = (struct ML_CSR_MSRdata *) input_matrix->data;
    rowptr = matrix->rowptr;
    itemp   = rowptr[row];
+   if(itemp < 0) {
+      itemp += ((long long)1 << 32);
+   }
    bindx   = &(matrix->columns[itemp]);
    val     = &(matrix->values[itemp]);
 
-   *row_lengths = rowptr[row+1] - itemp;
+   rtemp = rowptr[row+1];
+   if(rtemp < 0) {
+      rtemp += ((long long)1 << 32);
+   }
+   *row_lengths = rtemp - itemp;
 
    if (*row_lengths+index > *allocated_space) {
       *allocated_space = 2*(*allocated_space) + 1;

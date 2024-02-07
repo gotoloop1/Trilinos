@@ -1597,7 +1597,18 @@ double ML_gdot(int N, double r[], double z[], ML_Comm *comm)
 
   add_N = N;
 
+#ifdef _OPENACC
+  double sum = 0.0;
+
+  #pragma acc loop reduction(+:sum)
+  for(int i = 0; i < N; i++) {
+    sum += r[i] * z[i];
+  }
+
+  return ML_gsum_double(sum, comm);
+#else
   return ML_gsum_double(DDOT_F77(&add_N, r, &one, z, &one), comm);
+#endif
 
 } /* dot */
 
